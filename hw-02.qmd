@@ -1,30 +1,226 @@
 ---
 title: "HW 02"
-author: "INSERT YOUR NAME HERE"
+author: "Ashton Norman"
 format: 
   html:
     embed-resources: true
 toc: true
+execute:
+  warning: false
+  error: false
+  message: false
 ---
+
+```{r}
+#| label: Package and Library Loading
+
+#install.packages(c("dsbox", "tidyverse", "ggridges", "fs", "janitor", "palmerpenguins"))
+
+library(tidyverse)
+library(readr)
+library(ggridges)
+library(dsbox)
+library(ggplot2)
+library(fs)
+library(janitor)
+library(palmerpenguins)
+
+```
 
 ## 1 - A new day, a new plot, a new geom
 
 ```{r}
-#| label: label-me-1
+#| label: Q1 Edinburgh Airbnb
+
+#load and preview data
+data("edibnb")
+
+#data frame of median scores by neighborhood - originally used for verification/troubleshooting, kept for quick reference to score ranges in discussion text
+neigh_meds <- edibnb |>
+  group_by(neighbourhood) |>
+  summarise(median=median(review_scores_rating, na.rm=TRUE))
+
+ggplot(edibnb, aes(x=review_scores_rating, y=forcats::fct_reorder(neighbourhood,review_scores_rating, .fun=median, na.rm=TRUE)))+
+  scale_x_continuous(expand=c(0,0))+
+  #scale_y_discrete(expand=expansion(add=c(.2,5)))+
+  coord_cartesian(clip = "off")+
+  geom_density_ridges(
+    scale=1,
+    fill="aquamarine",
+    alpha=0.7
+    )+
+  labs(
+    title="Edinburgh Airbnb Scores by Neighborhood",
+    x="Rating",
+    y="Neighborhood"
+  )+
+  stat_summary(
+    fun=median, #adding median labels for verification and interpretation
+    geom="text",
+    aes(label=after_stat(x)),
+    size=3,
+    color="gray30"
+  ) +
+  theme_ridges()+
+    theme(
+      panel.background=element_blank()
+    )
 
 ```
 
+The Airbnb review scores of rentals in Edinburgh range from `r min(edibnb$review_scores_rating, na.rm=TRUE)` to `r max(edibnb$review_scores_rating, na.rm=TRUE)`, with a narrow range of median ratings by neighborhood (`r min(neigh_meds$median)`-`r max(neigh_meds$median)`). This indicates that while a few listings may receive low ratings, overall, Airbnb guests are very satisfied renting in Edinburgh neighborhoods.
+
 ## 2 - Foreign Connected PACs
 
-```{r}
-#| label: label-me-2
+The ultimate goal of this exercise is to recreate yet another plot. But there is a nontrivial amount of data wrangling and tidying that needs to happen before you can do that. Below are the steps you should follow so that you can obtain the necessary interim objects we will be looking for as we review your work.
 
+-   First, clean the names of the variables in the dataset with a new function from the [**janitor**](http://sfirke.github.io/janitor/) package: [`clean_names()`](http://sfirke.github.io/janitor/reference/clean_names.html). Then clean and transform the data such that you have something like the following at the end.
+
+```{r}
+#| label: Q2 Foreign PACs
+
+# get a list of files with "Foreign Connected PAC" in their names
+list_of_files <- dir_ls(path = "data", regexp = "Foreign Connected PAC")
+
+# read all files and row bind them
+# keeping track of the file name in a new column called year
+pac <- read_csv(list_of_files, id = "year")
+
+pac <- pac |>
+  clean_names() |>
+  mutate(year=substr(year, 35, 38)) |>
+  separate(country_of_origin_parent_company,
+           into=c("country_of_origin", "parent_company"),
+           sep="/"
+           ) |>
+  relocate(total, .after=repubs) 
+
+pac <-lapply(pac, gsub, pattern="$", fixed=TRUE, replacement="")
+
+class(pac$repubs)
+
+view(pac)
 ```
 
 ## 3 - Median housing prices in the US
 
+```{r}
+#| label: Q3 US Median Housing Prices
+
+#load CSVs from the data folder
+med_housing <- read_csv("data/median-housing.csv") 
+recess <- read.csv("data/recessions.csv")
+
+#MSPUS start and end dates
+MSPUS_start<-min(med_housing$DATE)
+MSPUS_end<-max(med_housing$DATE)
+
+#Filter recession dates that overlap with MSPUS date range
+recess <- recess |>
+  mutate(
+    Peak=as.Date(Peak),
+    Trough=as.Date(Trough),
+    recessions_during=Peak>=MSPUS_start & Trough<=MSPUS_end
+  )
+
+#checking that correct recessions flagged TRUE
+#recess |>
+  #filter(recessions_during)
+
+#plot graph
+
+ggplot(med_housing, aes(x=DATE, y=MSPUS))+
+  #add the recession lines
+  geom_rect(
+  data=recess |>
+    filter(recessions_during),
+    aes(xmin=Peak, xmax=Trough, ymin=-Inf, ymax=Inf),
+    fill="gray90",
+    inherit.aes=FALSE
+  )+
+  geom_line(color="blue", linewidth=1)+
+  scale_y_continuous(
+    labels=scales::comma, 
+    limits=c(0,400000),
+    breaks=seq(0, 400000, by=40000),
+    expand=c(0,0)
+    )+
+  scale_x_date(
+    date_breaks="5 years",
+    date_labels="%Y"
+  )+
+  labs(
+    title="Median sales price of houses sold in the United States",
+    subtitle="Not seasonally adjusted",
+    caption="Shaded areas indicate U.S. recessions\nSources: Census; HUD",
+    x=NULL,
+    y="Dollars"
+  )+
+  theme_minimal()+
+  theme(
+    panel.grid.minor.x=element_blank(), #remove x-axis grid lines
+    panel.grid.major.x=element_blank(),
+    plot.title.position="plot", #position title and subtitle all the way left
+    plot.subtitle=element_text(margin=margin(b=20)) #add some space between subtitle and graph
+  )
+
+MSPUS_19_20 <- med_housing |>
+  filter(between(DATE, as.Date("2019-01-01"), as.Date("2020-12-31")))
+
+print(MSPUS_19_20)
+
+ggplot(MSPUS_19_20, aes(x=DATE, y=MSPUS))+
+  geom_line(color="blue", linewidth=1)+
+  scale_y_continuous(
+    labels=scales::comma, 
+    limits=c(300000,360000),
+    breaks=seq(300000, 360000, by=20000),
+    expand=c(0,0)
+    )+
+  scale_x_date(
+    date_breaks="3 months",
+    date_labels="%Y"
+  )+
+  labs(
+    title="Median sales price of houses sold in the United States",
+    subtitle="Not seasonally adjusted",
+    x=NULL,
+    y="Dollars"
+  )+
+  theme_minimal()+
+  theme(
+    panel.grid.minor.x=element_blank(),
+    plot.title.position="plot", 
+    plot.subtitle=element_text(margin=margin(b=20))
+  )
+```
 
 ## 4 - Expect More. Plot More.
 
+```{r}
+#| label: Q4 Target logo
 
-## 5 - Mirror, mirror on the wall, who’s the ugliest of them all?
+#equation of circle = (x-h)^2 +(y-k)^2=r^2
+#circle centered at (10,10), radius of 10 = x^2 -20x + y^2 -20y = -100
+
+r <- 10
+theta <- seq(10, 2*pi, length.out=500)
+x <- r*cos(theta)
+y <- r*sin(theta)
+
+
+
+```
+
+## 5 - Mirror, mirror on the wall, who's the ugliest of them all?
+
+**Mirror, mirror on the wall, who's the ugliest of them all?** Make a plot of the variables in the `penguins` dataset from the **palmerpenguins** package. Your plot should use at least two variables, but more is fine too. First, make the plot using the default theme and color scales. Then, update the plot to be as ugly as possible. You will probably want to play around with theme options, colors, fonts, etc. The ultimate goal is the ugliest possible plot, and the sky is the limit!
+
+```{r}
+#| label: Q5 Ugly plot
+
+#load and preview data
+data("penguins")
+head(penguins)
+
+```
