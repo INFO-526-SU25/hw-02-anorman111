@@ -233,7 +233,11 @@ ggplot(med_housing, aes(x=DATE, y=MSPUS))+
   )
 
 MSPUS_19_20 <- med_housing |>
-  filter(between(DATE, as.Date("2019-01-01"), as.Date("2020-12-31")))
+  filter(between(DATE, as.Date("2019-01-01"), as.Date("2020-12-31"))) |>
+  mutate(
+    year=year(DATE),
+    quarter=quarter(DATE, with_year=FALSE, fiscal_start=1)
+  )
 
 print(MSPUS_19_20)
 
